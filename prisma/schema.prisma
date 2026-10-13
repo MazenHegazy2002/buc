@@ -84,7 +84,7 @@ model LessonFile {
   driveId      String   @unique
   mimeType     String
   kind         FileKind @default(OTHER)
-  sizeBytes    Int?
+  sizeBytes    BigInt?
   modifiedTime DateTime
   viewUrl      String
   downloadUrl  String

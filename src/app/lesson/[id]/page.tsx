@@ -41,7 +41,7 @@ export default async function LessonPage({ params }: Props) {
         status={lesson.status}
         lastError={lesson.lastError}
         files={lesson.files.map((f) => ({
-          id: f.id, title: f.title, kind: f.kind, mimeType: f.mimeType, sizeBytes: f.sizeBytes,
+          id: f.id, title: f.title, kind: f.kind, mimeType: f.mimeType, sizeBytes: f.sizeBytes ? Number(f.sizeBytes) : null,
           viewUrl: f.viewUrl, downloadUrl: f.downloadUrl,
         }))}
         summary={lesson.summary}
