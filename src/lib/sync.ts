@@ -90,7 +90,7 @@ export async function syncDrive() {
             title: f.path.length ? `${f.path.join(" / ")} / ${f.name}` : f.name,
             mimeType: f.mimeType,
             kind: classify(f.name, f.path),
-            sizeBytes: f.size ?? null,
+            sizeBytes: f.size !== undefined && f.size !== null ? BigInt(f.size) : null,
             modifiedTime: new Date(f.modifiedTime),
             viewUrl: f.webViewLink ?? `https://drive.google.com/file/d/${f.id}/view`,
             downloadUrl: EXPORTABLE[f.mimeType]
