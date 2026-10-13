@@ -1,0 +1,127 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum FileKind {
+  LECTURE
+  CPL
+  OTHER
+}
+
+enum ProcessStatus {
+  PENDING    // new/changed content, waiting for AI
+  PROCESSING // currently being generated
+  READY      // AI assets up to date
+  FAILED     // last attempt failed (see lastError)
+  EMPTY      // no readable files in the lesson
+}
+
+model Semester {
+  id        String    @id @default(cuid())
+  title     String
+  driveId   String    @unique
+  order     Int       @default(0)
+  subjects  Subject[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Subject {
+  id         String   @id @default(cuid())
+  title      String
+  driveId    String   @unique
+  order      Int      @default(0)
+  semesterId String
+  semester   Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  lessons    Lesson[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Lesson {
+  id          String        @id @default(cuid())
+  title       String
+  driveId     String        @unique
+  order       Int           @default(0)
+  subjectId   String
+  subject     Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  files       LessonFile[]
+
+  // Fingerprint of all file ids + modifiedTimes; changes => regenerate
+  contentHash String?
+  status      ProcessStatus @default(PENDING)
+  attempts    Int           @default(0)
+  lastError   String?       @db.Text
+
+  summary     String?       @db.Text // Markdown
+  mindMap     String?       @db.Text // Mermaid syntax
+  video       Json?         // { slides: [{ title, bullets[], narration }] }
+  mcqs        Mcq[]
+  cases       ClinicalCase[]
+
+  generatedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([status])
+}
+
+model LessonFile {
+  id           String   @id @default(cuid())
+  title        String
+  driveId      String   @unique
+  mimeType     String
+  kind         FileKind @default(OTHER)
+  sizeBytes    Int?
+  modifiedTime DateTime
+  viewUrl      String
+  downloadUrl  String
+  lessonId     String
+  lesson       Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+}
+
+model Mcq {
+  id           String     @id @default(cuid())
+  order        Int
+  question     String     @db.Text
+  options      String[]
+  correctIndex Int
+  explanation  String     @db.Text
+  difficulty   Difficulty
+  lessonId     String
+  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+}
+
+model ClinicalCase {
+  id           String     @id @default(cuid())
+  order        Int
+  scenario     String     @db.Text
+  question     String     @db.Text
+  options      String[]
+  correctIndex Int
+  explanation  String     @db.Text
+  difficulty   Difficulty
+  lessonId     String
+  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+}
+
+model SyncRun {
+  id          String    @id @default(cuid())
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  ok          Boolean?
+  stats       Json?
+  error       String?   @db.Text
+}

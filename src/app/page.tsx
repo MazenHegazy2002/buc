@@ -1,69 +1,63 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import Link from "next/link";
+import { connection } from "next/server";
+import { prisma } from "@/lib/prisma";
 
-export default function Home() {
+export default async function Home() {
+  await connection();
+  const [semesters, lessons, ready, files, lastRun] = await Promise.all([
+    prisma.semester.findMany({
+      orderBy: { order: "asc" },
+      include: { _count: { select: { subjects: true } }, subjects: { select: { _count: { select: { lessons: true } } } } },
+    }),
+    prisma.lesson.count(),
+    prisma.lesson.count({ where: { status: "READY" } }),
+    prisma.lessonFile.count(),
+    prisma.syncRun.findFirst({ where: { ok: true }, orderBy: { startedAt: "desc" } }),
+  ]);
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.tsx</code> file.
-          </h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <>
+      <section className="hero">
+        <span className="eyebrow">⚕ Medical study platform</span>
+        <h1>
+          Every lecture. <span className="grad-text">Summarised, mapped & examined.</span>
+        </h1>
+        <p>
+          Lecture and CPL PDFs for every lesson, with AI summaries, mind maps, video walkthroughs, 30 MCQs and 30
+          clinical cases, refreshed from Google Drive every evening.
+        </p>
+        <div className="stats">
+          <div className="stat"><b>{semesters.length}</b><span>Semesters</span></div>
+          <div className="stat"><b>{lessons}</b><span>Lessons</span></div>
+          <div className="stat"><b>{files}</b><span>PDFs & files</span></div>
+          <div className="stat"><b>{ready * 60}</b><span>Exam questions</span></div>
+          <div className="stat">
+            <b>{lastRun ? lastRun.startedAt.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "—"}</b>
+            <span>Last sync</span>
+          </div>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </section>
+
+      {semesters.length === 0 ? (
+        <div className="notice">
+          <h3>No content yet</h3>
+          The first Drive sync hasn&apos;t run. It runs automatically at 8:00 PM, or trigger it from <code>/api/cron/sync</code>.
         </div>
-      </main>
-    </div>
+      ) : (
+        <div className="grid">
+          {semesters.map((s, i) => {
+            const lessonCount = s.subjects.reduce((n, x) => n + x._count.lessons, 0);
+            return (
+              <Link key={s.id} href={`/semester/${s.id}`} className="card" id={`semester-${s.id}`} style={{ animationDelay: `${i * 60}ms` }}>
+                <div className="card-icon">🎓</div>
+                <h3>{s.title}</h3>
+                <p>{s._count.subjects} subjects · {lessonCount} lessons</p>
+                <div className="card-foot"><span /> <span className="arrow">→</span></div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </>
   );
 }
