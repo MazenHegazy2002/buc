@@ -14,13 +14,32 @@ let cached: drive_v3.Drive | null = null;
 
 export function getDrive(): drive_v3.Drive {
   if (cached) return cached;
+  let credentials: any = undefined;
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  const credentials = raw
-    ? JSON.parse(raw)
-    : {
-        client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-        private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-      };
+  if (raw) {
+    try {
+      credentials = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (typeof credentials === "string") credentials = JSON.parse(credentials);
+    } catch {
+      // If it fails to parse as string, check if it is a file path
+      const fs = require("fs");
+      if (fs.existsSync(raw)) {
+        credentials = JSON.parse(fs.readFileSync(raw, "utf8"));
+      }
+    }
+  }
+  if (!credentials && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
+    credentials = {
+      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+    };
+  }
+  if (!credentials) {
+    const fs = require("fs");
+    if (fs.existsSync("buclms-0bff9f3f9936.json")) {
+      credentials = JSON.parse(fs.readFileSync("buclms-0bff9f3f9936.json", "utf8"));
+    }
+  }
   const auth = new google.auth.GoogleAuth({
     credentials,
     scopes: ["https://www.googleapis.com/auth/drive.readonly"],

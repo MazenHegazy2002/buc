@@ -3,5 +3,9 @@ declare module "officeparser" {
     data: Buffer | string,
     callback?: (data: string, err?: any) => void
   ): Promise<string>;
-  export function parseOfficeAsync(data: Buffer | string, config?: any): Promise<string>;
+  export function convert(
+    file: Buffer | string,
+    destination: string,
+    config?: any
+  ): Promise<string>;
 }
