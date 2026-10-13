@@ -18,6 +18,8 @@
     "googleapis": "^185.0.0",
     "mermaid": "^12.2.0",
     "next": "16.4.0",
+    "openai": "^7.32.0",
+    "pdf-parse-fork": "^1.2.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-markdown": "^10.1.0",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

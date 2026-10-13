@@ -1,150 +1,122 @@
-import { GoogleGenAI, Type, createPartFromUri, type Part, type Schema } from "@google/genai";
+import OpenAI from "openai";
+import pdfParse from "pdf-parse-fork";
 import { prisma } from "./prisma";
 import { downloadFile, EXPORTABLE } from "./drive";
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const MODEL = process.env.AI_MODEL || "gemini 3.1 pro re";
 const READABLE = new Set(["application/pdf", ...Object.keys(EXPORTABLE)]);
-const INLINE_LIMIT = 15 * 1024 * 1024; // keep total inline payload under Gemini's 20MB cap
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-const SYSTEM = `You are a senior medical professor and examiner writing high-yield study material
-for medical students. Use ONLY the attached lecture / CPL material as the source of truth; you may add
-widely accepted clinical knowledge where it clarifies the material. Be precise, clinically accurate,
-and exam-oriented.`;
-
-// ---------- Schemas ----------
-const question = (withScenario: boolean): Schema => ({
-  type: Type.OBJECT,
-  properties: {
-    ...(withScenario && { scenario: { type: Type.STRING, description: "Realistic patient vignette: age/sex, complaint, history, exam, investigations" } }),
-    question: { type: Type.STRING },
-    options: { type: Type.ARRAY, items: { type: Type.STRING }, minItems: "4", maxItems: "4" },
-    correctIndex: { type: Type.INTEGER, description: "0-3" },
-    explanation: { type: Type.STRING, description: "Why the answer is correct and why each distractor is wrong" },
-  },
-  required: [...(withScenario ? ["scenario"] : []), "question", "options", "correctIndex", "explanation"],
+const openai = new OpenAI({
+  baseURL: process.env.AI_BASE_URL || "http://169.58.133.158:20128/v1",
+  apiKey: process.env.AI_API_KEY || "sk-bdddf22ad7d5ac39-7caa13-4c1511ec",
 });
 
-const tiered = (withScenario: boolean): Schema => ({
-  type: Type.OBJECT,
-  properties: {
-    easy: { type: Type.ARRAY, items: question(withScenario), minItems: "5", maxItems: "5" },
-    medium: { type: Type.ARRAY, items: question(withScenario), minItems: "5", maxItems: "5" },
-    hard: { type: Type.ARRAY, items: question(withScenario), minItems: "20", maxItems: "20" },
-  },
-  required: ["easy", "medium", "hard"],
-});
+const SYSTEM = `You are a senior medical professor and examiner creating high-yield study material for medical students.
+Use the attached lecture / CPL materials as the core source of truth.
+Be accurate, thorough, and strictly return pure, valid JSON with NO markdown code-blocks (no \`\`\`json).`;
 
-const overviewSchema: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    summary: { type: Type.STRING, description: "Markdown summary" },
-    mindMap: { type: Type.STRING, description: "Mermaid mindmap code" },
-    slides: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          title: { type: Type.STRING },
-          bullets: { type: Type.ARRAY, items: { type: Type.STRING } },
-          narration: { type: Type.STRING, description: "What the teacher says aloud for this slide, 60-120 words" },
-        },
-        required: ["title", "bullets", "narration"],
-      },
-    },
-  },
-  required: ["summary", "mindMap", "slides"],
-};
+const OVERVIEW_PROMPT = `Based on the provided medical text, produce a JSON object with:
+1. "summary": A comprehensive, high-yield summary in Markdown (include headings, tables for comparisons, bold key pearls).
+2. "mindMap": A valid Mermaid mindmap string. Start with "mindmap\\n  root((Topic))" with clean alphanumeric node text without quotes or parenthesis.
+3. "slides": An array of 8-15 slides for a video lesson. Each slide has: "title" (string), "bullets" (array of 3-5 strings), and "narration" (spoken transcript string, 50-100 words).
 
-// ---------- Prompts ----------
-const OVERVIEW_PROMPT = `From the attached material produce:
-1. "summary": a comprehensive high-yield summary in Markdown (headings, bullet points, tables for
-   comparisons, bold key terms, a "High-yield / exam pearls" section at the end).
-2. "mindMap": a Mermaid **mindmap** diagram. Start with the line "mindmap", then "  root((Lesson topic))",
-   indent children with 2 spaces per level, 3-4 levels deep, max ~40 nodes. Node text must be short and
-   must NOT contain parentheses, brackets, braces, quotes or colons.
-3. "slides": 8-15 slides for an explanatory video lesson that walks through the whole topic in a logical
-   teaching order (intro → core concepts → clinical relevance → recap). Each slide has a title, 3-5 short
-   bullets, and a spoken narration.`;
+Format required:
+{"summary": "...", "mindMap": "...", "slides": [{"title": "...", "bullets": ["..."], "narration": "..."}]}`;
 
-const MCQ_PROMPT = `Write exactly 30 single-best-answer MCQs covering the whole attached material:
-5 easy (recall), 5 medium (understanding/application), 20 hard (multi-step reasoning, integration,
-USMLE/board style). 4 options each, one clearly correct answer, plausible distractors, no "all of the above".
-Vary the position of the correct answer.`;
+const MCQ_PROMPT = `Based on the provided medical text, write EXACTLY 30 Multiple Choice Questions (Single Best Answer):
+- Exactly 5 EASY (direct recall/definition)
+- Exactly 5 MEDIUM (application/understanding)
+- Exactly 20 HARD (multi-step clinical reasoning / differential diagnosis)
 
-const CASE_PROMPT = `Write exactly 30 clinical case scenarios based on the attached material:
-5 easy, 5 medium, 20 hard. Each has a realistic patient vignette (demographics, presenting complaint,
-history, examination, relevant investigations with values), then one question (diagnosis, next best step,
-mechanism, management, or interpretation) with 4 options. Hard cases should require integrating several
-findings and excluding close differentials. Vary the position of the correct answer.`;
+Return a JSON object in this exact shape:
+{
+  "easy": [{"question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}],
+  "medium": [...],
+  "hard": [...]
+}
+Options must contain 4 items. correctIndex must be an integer between 0 and 3.`;
 
-// ---------- Helpers ----------
-async function buildFileParts(lessonId: string): Promise<Part[]> {
+const CASE_PROMPT = `Based on the provided medical text, create EXACTLY 30 Clinical Case Vignettes:
+- Exactly 5 EASY
+- Exactly 5 MEDIUM
+- Exactly 20 HARD
+
+Return a JSON object in this exact shape:
+{
+  "easy": [{"scenario": "Patient vignette with history & exam...", "question": "What is the diagnosis/management?", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..."}],
+  "medium": [...],
+  "hard": [...]
+}
+Options must contain 4 items. correctIndex must be an integer between 0 and 3.`;
+
+async function extractLessonText(lessonId: string): Promise<string> {
   const files = await prisma.lessonFile.findMany({ where: { lessonId }, orderBy: { title: "asc" } });
   const readable = files.filter((f) => READABLE.has(f.mimeType));
-  const parts: Part[] = [];
-  let inlineBytes = 0;
+  let combined = "";
 
   for (const f of readable) {
-    const { data, mimeType } = await downloadFile(f.driveId, f.mimeType);
-    parts.push({ text: `--- File (${f.kind}): ${f.title} ---` });
-    if (inlineBytes + data.length <= INLINE_LIMIT) {
-      inlineBytes += data.length;
-      parts.push({ inlineData: { mimeType, data: data.toString("base64") } });
-    } else {
-      const up = await ai.files.upload({
-        file: new Blob([new Uint8Array(data)], { type: mimeType }),
-        config: { mimeType, displayName: f.title.slice(0, 100) },
-      });
-      parts.push(createPartFromUri(up.uri!, up.mimeType!));
+    try {
+      const { data } = await downloadFile(f.driveId, f.mimeType);
+      const parsed = await pdfParse(data);
+      combined += `\n\n--- Document: ${f.title} (${f.kind}) ---\n${parsed.text}\n`;
+    } catch (err) {
+      console.error(`Failed to parse PDF ${f.title}:`, err);
     }
   }
-  return parts;
+
+  return combined.trim();
 }
 
-async function generate<T>(fileParts: Part[], prompt: string, schema: Schema): Promise<T> {
-  const res = await ai.models.generateContent({
+function cleanJson(text: string): string {
+  return text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+async function callAI<T>(prompt: string, text: string): Promise<T> {
+  // Truncate text to avoid token limits if very large
+  const truncated = text.slice(0, 75000);
+
+  const res = await openai.chat.completions.create({
     model: MODEL,
-    contents: [{ role: "user", parts: [...fileParts, { text: prompt }] }],
-    config: {
-      systemInstruction: SYSTEM,
-      responseMimeType: "application/json",
-      responseSchema: schema,
-      temperature: 0.6,
-    },
+    messages: [
+      { role: "system", content: SYSTEM },
+      { role: "user", content: `${prompt}\n\n=== SOURCE STUDY MATERIAL ===\n${truncated}` },
+    ],
+    temperature: 0.5,
   });
-  const text = res.text;
-  if (!text) throw new Error(`Empty response from ${MODEL}`);
-  return JSON.parse(text) as T;
+
+  const content = res.choices[0]?.message?.content || "{}";
+  return JSON.parse(cleanJson(content)) as T;
 }
 
 type Q = { scenario?: string; question: string; options: string[]; correctIndex: number; explanation: string };
-type Tiered = { easy: Q[]; medium: Q[]; hard: Q[] };
+type Tiered = { easy?: Q[]; medium?: Q[]; hard?: Q[] };
 
 function flatten(t: Tiered) {
   const valid = (q: Q) => Array.isArray(q.options) && q.options.length === 4 && q.correctIndex >= 0 && q.correctIndex <= 3;
-  return [
-    ...t.easy.slice(0, 5).map((q) => ({ ...q, difficulty: "EASY" as const })),
-    ...t.medium.slice(0, 5).map((q) => ({ ...q, difficulty: "MEDIUM" as const })),
-    ...t.hard.slice(0, 20).map((q) => ({ ...q, difficulty: "HARD" as const })),
-  ]
+  const easy = (t.easy || []).slice(0, 5).map((q) => ({ ...q, difficulty: "EASY" as const }));
+  const medium = (t.medium || []).slice(0, 5).map((q) => ({ ...q, difficulty: "MEDIUM" as const }));
+  const hard = (t.hard || []).slice(0, 20).map((q) => ({ ...q, difficulty: "HARD" as const }));
+
+  return [...easy, ...medium, ...hard]
     .filter(valid)
     .map((q, order) => ({ ...q, order }));
 }
 
-/** Generate all AI assets for one lesson and replace the old ones atomically. */
 export async function processLesson(lessonId: string) {
-  const fileParts = await buildFileParts(lessonId);
-  if (!fileParts.length) {
+  const text = await extractLessonText(lessonId);
+  if (!text) {
     await prisma.lesson.update({ where: { id: lessonId }, data: { status: "EMPTY" } });
     return;
   }
 
   const [overview, mcqs, cases] = await Promise.all([
-    generate<{ summary: string; mindMap: string; slides: unknown[] }>(fileParts, OVERVIEW_PROMPT, overviewSchema),
-    generate<Tiered>(fileParts, MCQ_PROMPT, tiered(false)),
-    generate<Tiered>(fileParts, CASE_PROMPT, tiered(true)),
+    callAI<{ summary: string; mindMap: string; slides: unknown[] }>(OVERVIEW_PROMPT, text),
+    callAI<Tiered>(MCQ_PROMPT, text),
+    callAI<Tiered>(CASE_PROMPT, text),
   ]);
 
   const mcqRows = flatten(mcqs);
