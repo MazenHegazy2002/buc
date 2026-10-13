@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import pdfParse from "pdf-parse-fork";
-import { parseOfficeAsync } from "officeparser";
+import { parseOffice } from "officeparser";
 import { prisma } from "./prisma";
 import { downloadFile, EXPORTABLE } from "./drive";
 import { OFFICE_MIMES } from "./sync";
@@ -65,7 +65,7 @@ async function extractLessonText(lessonId: string): Promise<string> {
         const parsed = await pdfParse(data);
         text = parsed.text;
       } else if (OFFICE_MIMES[mimeType] || mimeType.includes("presentation") || mimeType.includes("word")) {
-        text = await parseOfficeAsync(data);
+        text = await parseOffice(data);
       } else if (mimeType === "text/plain") {
         text = data.toString("utf-8");
       }
