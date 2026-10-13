@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 type Props = { params: Promise<{ id: string }> };
 
-const STATUS_LABEL = { READY: "Ready", PENDING: "Queued", PROCESSING: "Generating…", FAILED: "Failed", EMPTY: "No PDFs" } as const;
+const STATUS_LABEL = { READY: "Ready", PENDING: "Queued", PROCESSING: "Generating…", FAILED: "Failed", EMPTY: "No Docs" } as const;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const s = await prisma.subject.findUnique({ where: { id: (await params).id } });

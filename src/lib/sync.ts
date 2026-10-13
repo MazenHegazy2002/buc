@@ -3,7 +3,19 @@ import { prisma } from "./prisma";
 import { listChildren, listFilesDeep, isFolder, naturalCompare, EXPORTABLE, type DriveItem } from "./drive";
 import type { FileKind } from "@prisma/client";
 
-const READABLE = new Set(["application/pdf", ...Object.keys(EXPORTABLE)]);
+export const OFFICE_MIMES: Record<string, string> = {
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  "application/vnd.ms-powerpoint": "ppt",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/msword": "doc",
+  "text/plain": "txt",
+};
+
+const READABLE = new Set([
+  "application/pdf",
+  ...Object.keys(EXPORTABLE),
+  ...Object.keys(OFFICE_MIMES),
+]);
 
 function classify(name: string, path: string[]): FileKind {
   const s = [...path, name].join("/").toLowerCase();

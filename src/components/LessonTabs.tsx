@@ -42,7 +42,7 @@ function NotReady({ status, lastError }: Pick<Props, "status" | "lastError">) {
     PENDING: ["Queued for generation", "This lesson will be processed shortly after the next sync."],
     PROCESSING: ["Generating now…", "The AI is reading the lecture files. Check back in a couple of minutes."],
     FAILED: ["Generation failed", lastError ?? "It will be retried automatically."],
-    EMPTY: ["No readable files", "Add PDF, Google Docs or Slides files to this lesson folder in Drive."],
+    EMPTY: ["No readable materials", "Add PDF, PowerPoint (.pptx), Word (.docx), or Google Docs/Slides to this lesson folder."],
     READY: ["Not available", ""],
   }[status];
   return (

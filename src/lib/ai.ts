@@ -1,10 +1,12 @@
 import OpenAI from "openai";
 import pdfParse from "pdf-parse-fork";
+import { parseOfficeAsync } from "officeparser";
 import { prisma } from "./prisma";
 import { downloadFile, EXPORTABLE } from "./drive";
+import { OFFICE_MIMES } from "./sync";
 
 const MODEL = process.env.AI_MODEL || "gemini 3.1 pro re";
-const READABLE = new Set(["application/pdf", ...Object.keys(EXPORTABLE)]);
+const READABLE = new Set(["application/pdf", ...Object.keys(EXPORTABLE), ...Object.keys(OFFICE_MIMES)]);
 
 const openai = new OpenAI({
   baseURL: process.env.AI_BASE_URL || "http://169.58.133.158:20128/v1",
@@ -56,11 +58,23 @@ async function extractLessonText(lessonId: string): Promise<string> {
 
   for (const f of readable) {
     try {
-      const { data } = await downloadFile(f.driveId, f.mimeType);
-      const parsed = await pdfParse(data);
-      combined += `\n\n--- Document: ${f.title} (${f.kind}) ---\n${parsed.text}\n`;
+      const { data, mimeType } = await downloadFile(f.driveId, f.mimeType);
+      let text = "";
+
+      if (mimeType === "application/pdf") {
+        const parsed = await pdfParse(data);
+        text = parsed.text;
+      } else if (OFFICE_MIMES[mimeType] || mimeType.includes("presentation") || mimeType.includes("word")) {
+        text = await parseOfficeAsync(data);
+      } else if (mimeType === "text/plain") {
+        text = data.toString("utf-8");
+      }
+
+      if (text.trim()) {
+        combined += `\n\n--- Document: ${f.title} (${f.kind}) ---\n${text}\n`;
+      }
     } catch (err) {
-      console.error(`Failed to parse PDF ${f.title}:`, err);
+      console.error(`Failed to parse file ${f.title}:`, err);
     }
   }
 
