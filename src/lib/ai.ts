@@ -82,15 +82,33 @@ async function extractLessonText(lessonId: string): Promise<string> {
 }
 
 function cleanJson(text: string): string {
-  return text
+  let cleaned = text
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
+
+  // Find first { or [ and last } or ]
+  const firstBrace = cleaned.indexOf("{");
+  const firstBracket = cleaned.indexOf("[");
+  let start = 0;
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    start = firstBrace;
+    const end = cleaned.lastIndexOf("}");
+    if (end > start) cleaned = cleaned.slice(start, end + 1);
+  } else if (firstBracket !== -1) {
+    start = firstBracket;
+    const end = cleaned.lastIndexOf("]");
+    if (end > start) cleaned = cleaned.slice(start, end + 1);
+  }
+
+  // Sanitize raw control characters inside JSON strings (e.g. unescaped newlines, tabs, carriage returns)
+  cleaned = cleaned.replace(/[\x00-\x09\x0B\x0C\x0E-\x1F]/g, " ");
+
+  return cleaned;
 }
 
 async function callAI<T>(prompt: string, text: string): Promise<T> {
-  // Truncate text to avoid token limits if very large
   const truncated = text.slice(0, 75000);
 
   const res = await openai.chat.completions.create({
@@ -99,11 +117,20 @@ async function callAI<T>(prompt: string, text: string): Promise<T> {
       { role: "system", content: SYSTEM },
       { role: "user", content: `${prompt}\n\n=== SOURCE STUDY MATERIAL ===\n${truncated}` },
     ],
-    temperature: 0.5,
+    response_format: { type: "json_object" },
+    temperature: 0.3,
   });
 
   const content = res.choices[0]?.message?.content || "{}";
-  return JSON.parse(cleanJson(content)) as T;
+  try {
+    return JSON.parse(cleanJson(content)) as T;
+  } catch (_e) {
+    // Fallback: replace any newlines between quotes
+    const fixed = cleanJson(content).replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
+      return match.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
+    });
+    return JSON.parse(fixed) as T;
+  }
 }
 
 type Q = { scenario?: string; question: string; options: string[]; correctIndex: number; explanation: string };
