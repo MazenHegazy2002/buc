@@ -48,7 +48,7 @@ export async function pendingCount() {
  * Process lessons until the time budget is used. Each lesson takes ~1-2 min,
  * so we stop starting new ones once less than `perLessonMs` remains.
  */
-export async function runWorker(budgetMs = 270_000, perLessonMs = 150_000) {
+export async function runWorker(budgetMs = 50_000, perLessonMs = 45_000) {
   const start = Date.now();
   const done: string[] = [];
   const failed: { id: string; error: string }[] = [];
