@@ -110,6 +110,14 @@ function cleanJson(text: string): string {
   return cleaned;
 }
 
+function repairJson(str: string): string {
+  return str
+    // Fix invalid escape sequences (e.g. \a \c \x \? or lonely backslashes that are not \" \\ \/ \b \f \n \r \t \uXXXX)
+    .replace(/\\([^"\\\/bfnrtu])/g, "$1")
+    // Fix trailing commas before closing braces/brackets
+    .replace(/,\s*([\]}])/g, "$1");
+}
+
 async function callAI<T>(prompt: string, text: string): Promise<T> {
   const truncated = text.slice(0, 75000);
 
@@ -124,14 +132,21 @@ async function callAI<T>(prompt: string, text: string): Promise<T> {
   });
 
   const content = res.choices[0]?.message?.content || "{}";
+  const cleaned = cleanJson(content);
   try {
-    return JSON.parse(cleanJson(content)) as T;
+    return JSON.parse(cleaned) as T;
   } catch (_e) {
-    // Fallback: replace any newlines between quotes
-    const fixed = cleanJson(content).replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
-      return match.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
-    });
-    return JSON.parse(fixed) as T;
+    try {
+      return JSON.parse(repairJson(cleaned)) as T;
+    } catch (_e2) {
+      // Fallback: replace any newlines between quotes and repair
+      const fixed = repairJson(
+        cleaned.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
+          return match.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
+        })
+      );
+      return JSON.parse(fixed) as T;
+    }
   }
 }
 
@@ -139,14 +154,26 @@ type Q = { scenario?: string; question: string; options: string[]; correctIndex:
 type Tiered = { easy?: Q[]; medium?: Q[]; hard?: Q[] };
 
 function flatten(t: Tiered) {
-  const valid = (q: Q) => Array.isArray(q.options) && q.options.length === 4 && q.correctIndex >= 0 && q.correctIndex <= 3;
-  const easy = (t.easy || []).slice(0, 5).map((q) => ({ ...q, difficulty: "EASY" as const }));
-  const medium = (t.medium || []).slice(0, 5).map((q) => ({ ...q, difficulty: "MEDIUM" as const }));
-  const hard = (t.hard || []).slice(0, 20).map((q) => ({ ...q, difficulty: "HARD" as const }));
+  const valid = (q: Q) =>
+    typeof q?.question === "string" &&
+    q.question.trim().length > 0 &&
+    Array.isArray(q.options) &&
+    q.options.length === 4 &&
+    typeof q.correctIndex === "number" &&
+    q.correctIndex >= 0 &&
+    q.correctIndex <= 3;
+  const easy = (t?.easy || []).slice(0, 5).map((q) => ({ ...q, difficulty: "EASY" as const }));
+  const medium = (t?.medium || []).slice(0, 5).map((q) => ({ ...q, difficulty: "MEDIUM" as const }));
+  const hard = (t?.hard || []).slice(0, 20).map((q) => ({ ...q, difficulty: "HARD" as const }));
 
   return [...easy, ...medium, ...hard]
     .filter(valid)
-    .map((q, order) => ({ ...q, order }));
+    .map((q, order) => ({
+      ...q,
+      question: q.question.trim(),
+      explanation: typeof q.explanation === "string" ? q.explanation : "",
+      order,
+    }));
 }
 
 export async function processLesson(lessonId: string) {
