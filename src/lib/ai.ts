@@ -110,12 +110,18 @@ function cleanJson(text: string): string {
   return cleaned;
 }
 
+import { jsonrepair } from "jsonrepair";
+
 function repairJson(str: string): string {
-  return str
-    // Fix invalid escape sequences (e.g. \a \c \x \? or lonely backslashes that are not \" \\ \/ \b \f \n \r \t \uXXXX)
-    .replace(/\\([^"\\\/bfnrtu])/g, "$1")
-    // Fix trailing commas before closing braces/brackets
-    .replace(/,\s*([\]}])/g, "$1");
+  try {
+    return jsonrepair(str);
+  } catch (_e) {
+    return str
+      // Fix invalid escape sequences (e.g. \a \c \x \? or lonely backslashes that are not \" \\ \/ \b \f \n \r \t \uXXXX)
+      .replace(/\\([^"\\\/bfnrtu])/g, "$1")
+      // Fix trailing commas before closing braces/brackets
+      .replace(/,\s*([\]}])/g, "$1");
+  }
 }
 
 async function callAI<T>(prompt: string, text: string): Promise<T> {
