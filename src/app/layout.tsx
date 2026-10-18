@@ -19,7 +19,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="container header-inner">
             <Link href="/" className="brand" id="nav-home">
               <span className="brand-mark">B</span>
-              BUC Med
+              <div className="brand-text">
+                <span className="brand-title">BUC Med</span>
+                <span className="brand-sub">Powered by Brandyy</span>
+              </div>
             </Link>
             <span className="header-meta">Auto-synced daily at 8:00 PM</span>
           </div>

@@ -47,12 +47,16 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
   border-bottom: 1px solid var(--border);
 }
 .header-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-.brand { display: flex; align-items: center; gap: .6rem; font-weight: 700; font-size: 1.1rem; letter-spacing: -.01em; }
+.brand { display: flex; align-items: center; gap: .75rem; font-weight: 700; font-size: 1.1rem; letter-spacing: -.01em; }
 .brand-mark {
-  width: 34px; height: 34px; border-radius: 10px; background: var(--grad);
+  width: 38px; height: 38px; border-radius: 11px; background: var(--grad);
   display: grid; place-items: center; color: var(--bg); font-weight: 800;
   box-shadow: 0 0 24px hsl(172 72% 48% / .45);
+  font-size: 1.15rem;
 }
+.brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+.brand-title { font-weight: 700; font-size: 1.15rem; color: var(--fg); letter-spacing: -.02em; }
+.brand-sub { font-size: 0.68rem; font-weight: 500; color: var(--muted); letter-spacing: 0.02em; }
 .header-meta { color: var(--muted); font-size: .85rem; }
 
 /* ---------- Hero ---------- */
