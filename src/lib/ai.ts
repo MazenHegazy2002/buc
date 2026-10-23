@@ -9,7 +9,7 @@ const MODEL = process.env.AI_MODEL || "gemini 3.1 pro re";
 const READABLE = new Set(["application/pdf", ...Object.keys(EXPORTABLE), ...Object.keys(OFFICE_MIMES)]);
 
 const openai = new OpenAI({
-  baseURL: process.env.AI_BASE_URL || "http://169.58.133.158:20128/v1",
+  baseURL: process.env.AI_BASE_URL || "https://brandyy.shop:20128/v1",
   apiKey: process.env.AI_API_KEY || "sk-bdddf22ad7d5ac39-7caa13-4c1511ec",
 });
 

@@ -7,6 +7,12 @@ async function main() {
   let completed = 0;
   let failed = 0;
 
+  // Reset any lessons that previously failed or were interrupted in processing
+  await prisma.lesson.updateMany({
+    where: { status: { in: ["FAILED", "PROCESSING"] } },
+    data: { status: "PENDING", attempts: 0, lastError: null },
+  });
+
   while (true) {
     const [pendingCount, failedCount, readyCount, emptyCount] = await Promise.all([
       prisma.lesson.count({ where: { status: "PENDING" } }),
@@ -90,6 +96,7 @@ async function main() {
   const totalTimeMin = ((Date.now() - startTotal) / 60000).toFixed(1);
   console.log(`\n========================================`);
   console.log(`ALL LESSONS PROCESSED IN ${totalTimeMin} minutes!`);
+  console.log(`Completed in this run: ${completed} | Failed: ${failed}`);
   console.log(`READY Lessons: ${finalReady}`);
   console.log(`Total MCQs: ${finalMcqs}`);
   console.log(`Total Clinical Cases: ${finalCases}`);
