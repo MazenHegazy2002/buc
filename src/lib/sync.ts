@@ -38,8 +38,11 @@ export async function syncDrive() {
 
   const seen = { sem: new Set<string>(), sub: new Set<string>(), les: new Set<string>(), file: new Set<string>() };
 
+  console.log(`Connecting to Google Drive root folder: ${root}`);
   const semesters = sorted(await listChildren(root));
+  console.log(`Found ${semesters.length} semesters.`);
   for (const [si, sem] of semesters.entries()) {
+    console.log(`[Semester ${si + 1}/${semesters.length}] ${sem.name}`);
     seen.sem.add(sem.id);
     const semester = await prisma.semester.upsert({
       where: { driveId: sem.id },
@@ -49,7 +52,9 @@ export async function syncDrive() {
     stats.semesters++;
 
     const subjects = sorted(await listChildren(sem.id));
+    console.log(`  Found ${subjects.length} subjects in ${sem.name}.`);
     for (const [ji, sub] of subjects.entries()) {
+      console.log(`  [Subject ${ji + 1}/${subjects.length}] ${sub.name}`);
       seen.sub.add(sub.id);
       const subject = await prisma.subject.upsert({
         where: { driveId: sub.id },
@@ -70,6 +75,9 @@ export async function syncDrive() {
         const existing = await prisma.lesson.findUnique({ where: { driveId: les.id } });
         const changed = !existing || existing.contentHash !== hash;
         const hasReadable = files.some((f) => READABLE.has(f.mimeType));
+        if (changed) {
+          console.log(`    >>> [CHANGED] Lesson: "${les.name}" (${sub.name}) -> ${hasReadable ? "PENDING" : "EMPTY"}`);
+        }
 
         const lesson = await prisma.lesson.upsert({
           where: { driveId: les.id },

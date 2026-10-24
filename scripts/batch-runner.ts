@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { processLesson } from "../src/lib/ai";
 import { prisma } from "../src/lib/prisma";
 

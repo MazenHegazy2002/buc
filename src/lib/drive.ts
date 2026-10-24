@@ -63,15 +63,18 @@ export async function listChildren(folderId: string): Promise<DriveItem[]> {
   const out: DriveItem[] = [];
   let pageToken: string | undefined;
   do {
-    const res = await drive.files.list({
-      q: `'${folderId}' in parents and trashed = false`,
-      fields:
-        "nextPageToken, files(id, name, mimeType, modifiedTime, size, webViewLink, shortcutDetails)",
-      pageSize: 1000,
-      pageToken,
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-    });
+    const res = await drive.files.list(
+      {
+        q: `'${folderId}' in parents and trashed = false`,
+        fields:
+          "nextPageToken, files(id, name, mimeType, modifiedTime, size, webViewLink, shortcutDetails)",
+        pageSize: 1000,
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      },
+      { timeout: 20000, retry: true }
+    );
     for (const f of res.data.files ?? []) {
       const isShortcut = f.mimeType === SHORTCUT && f.shortcutDetails?.targetId;
       out.push({

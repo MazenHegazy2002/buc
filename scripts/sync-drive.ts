@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { syncDrive } from "../src/lib/sync";
 import { prisma } from "../src/lib/prisma";
 
