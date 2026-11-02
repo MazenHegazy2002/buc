@@ -3,14 +3,10 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import FileBrowser, { type FileRow } from "./FileBrowser";
 import MindMap from "./MindMap";
 import VideoLesson, { type Slide } from "./VideoLesson";
 import Quiz, { type Question } from "./Quiz";
-
-type FileRow = {
-  id: string; title: string; kind: "LECTURE" | "CPL" | "OTHER"; mimeType: string;
-  sizeBytes: number | null; viewUrl: string; downloadUrl: string;
-};
 
 type Props = {
   status: "PENDING" | "PROCESSING" | "READY" | "FAILED" | "EMPTY";
@@ -24,18 +20,16 @@ type Props = {
 };
 
 const TABS = [
-  { key: "files", label: "📄 Files" },
-  { key: "summary", label: "📝 Summary" },
-  { key: "mindmap", label: "🧠 Mind map" },
-  { key: "video", label: "🎬 Video" },
-  { key: "mcq", label: "✅ MCQs" },
-  { key: "cases", label: "🏥 Clinical cases" },
+  { key: "files", label: "Files" },
+  { key: "summary", label: "Summary" },
+  { key: "mindmap", label: "Mind map" },
+  { key: "video", label: "Video" },
+  { key: "mcq", label: "MCQs" },
+  { key: "cases", label: "Clinical cases" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
 
-const KIND_ICON = { LECTURE: "📘", CPL: "🩻", OTHER: "📎" };
-const fmtSize = (b: number | null) => (b ? (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.round(b / 1e3)} KB`) : "");
 
 function NotReady({ status, lastError }: Pick<Props, "status" | "lastError">) {
   const msg = {
@@ -77,19 +71,7 @@ export default function LessonTabs(p: Props) {
       <section className="panel" key={tab} role="tabpanel">
         {tab === "files" &&
           (p.files.length ? (
-            <div className="files">
-              {p.files.map((f) => (
-                <div className="file" key={f.id}>
-                  <span style={{ fontSize: "1.5rem" }}>{KIND_ICON[f.kind]}</span>
-                  <div className="file-name">
-                    <b title={f.title}>{f.title}</b>
-                    <span>{f.kind === "OTHER" ? "File" : f.kind === "CPL" ? "CPL" : "Lecture"} {fmtSize(f.sizeBytes) && `· ${fmtSize(f.sizeBytes)}`}</span>
-                  </div>
-                  <a className="btn" href={f.viewUrl} target="_blank" rel="noreferrer" id={`view-${f.id}`}>View</a>
-                  <a className="btn btn-primary" href={f.downloadUrl} id={`download-${f.id}`}>Download ↓</a>
-                </div>
-              ))}
-            </div>
+            <FileBrowser files={p.files} />
           ) : (
             <div className="notice"><h3>No files</h3>This lesson folder is empty in Drive.</div>
           ))}

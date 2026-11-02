@@ -33,7 +33,7 @@ export default async function LessonPage({ params }: Props) {
   return (
     <>
       <nav className="crumbs">
-        <Link href="/">Home</Link> / <Link href={`/semester/${subject.semester.id}`}>{subject.semester.title}</Link> /{" "}
+        <Link href="/">Library</Link> / <Link href={`/semester/${subject.semester.id}`}>{subject.semester.title}</Link> /{" "}
         <Link href={`/subject/${subject.id}`}>{subject.title}</Link> / <span>{lesson.title}</span>
       </nav>
       <h1 className="page-title">{lesson.title}</h1>
@@ -41,7 +41,7 @@ export default async function LessonPage({ params }: Props) {
         status={lesson.status}
         lastError={lesson.lastError}
         files={lesson.files.map((f) => ({
-          id: f.id, title: f.title, kind: f.kind, mimeType: f.mimeType, sizeBytes: f.sizeBytes ? Number(f.sizeBytes) : null,
+          id: f.id, driveId: f.driveId, title: f.title, kind: f.kind, mimeType: f.mimeType, sizeBytes: f.sizeBytes ? Number(f.sizeBytes) : null,
           viewUrl: f.viewUrl, downloadUrl: f.downloadUrl,
         }))}
         summary={lesson.summary}

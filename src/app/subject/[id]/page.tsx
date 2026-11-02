@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
+import FolderIcon from "@/components/FolderIcon";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -28,18 +29,18 @@ export default async function SubjectPage({ params }: Props) {
   return (
     <>
       <nav className="crumbs">
-        <Link href="/">Home</Link> / <Link href={`/semester/${subject.semester.id}`}>{subject.semester.title}</Link> / <span>{subject.title}</span>
+        <Link href="/">Library</Link> / <Link href={`/semester/${subject.semester.id}`}>{subject.semester.title}</Link> / <span>{subject.title}</span>
       </nav>
       <h1 className="page-title">{subject.title}</h1>
       <div className="grid">
         {subject.lessons.map((l, i) => (
           <Link key={l.id} href={`/lesson/${l.id}`} className="card" id={`lesson-${l.id}`} style={{ animationDelay: `${i * 40}ms` }}>
-            <div className="card-icon">🩺</div>
+            <div className="card-icon"><FolderIcon /></div>
             <h3>{l.title}</h3>
             <p>{l._count.files} files</p>
             <div className="card-foot">
               <span className={`badge s-${l.status}`}>{STATUS_LABEL[l.status]}</span>
-              <span className="arrow">→</span>
+              
             </div>
           </Link>
         ))}

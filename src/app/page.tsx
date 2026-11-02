@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { prisma } from "@/lib/prisma";
+import FolderIcon from "@/components/FolderIcon";
 
 export default async function Home() {
   await connection();
@@ -18,12 +19,12 @@ export default async function Home() {
   return (
     <>
       <section className="hero">
-        <span className="eyebrow">⚕ Medical study platform</span>
+        <span className="eyebrow">Medical study library</span>
         <h1>
-          Every lecture. <span className="grad-text">Summarised, mapped & examined.</span>
+          Your Drive folders, ready to study
         </h1>
         <p>
-          Lecture and CPL PDFs for every lesson, with AI summaries, mind maps, video walkthroughs, 30 MCQs and 30
+          Open every lecture and CPL right here or download it, with AI summaries, mind maps, video walkthroughs, 30 MCQs and 30
           clinical cases, refreshed from Google Drive every evening.
         </p>
         <div className="stats">
@@ -49,10 +50,10 @@ export default async function Home() {
             const lessonCount = s.subjects.reduce((n, x) => n + x._count.lessons, 0);
             return (
               <Link key={s.id} href={`/semester/${s.id}`} className="card" id={`semester-${s.id}`} style={{ animationDelay: `${i * 60}ms` }}>
-                <div className="card-icon">🎓</div>
+                <div className="card-icon"><FolderIcon /></div>
                 <h3>{s.title}</h3>
                 <p>{s._count.subjects} subjects · {lessonCount} lessons</p>
-                <div className="card-foot"><span /> <span className="arrow">→</span></div>
+                <div className="card-foot"></div>
               </Link>
             );
           })}

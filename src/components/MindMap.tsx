@@ -13,9 +13,9 @@ export default function MindMap({ code }: { code: string }) {
       const mermaid = (await import("mermaid")).default;
       mermaid.initialize({
         startOnLoad: false,
-        theme: "dark",
+        theme: "neutral",
         securityLevel: "strict",
-        themeVariables: { fontFamily: "inherit", primaryColor: "#14b8a6", primaryTextColor: "#f1f5f9", lineColor: "#38bdf8" },
+        themeVariables: { fontFamily: "inherit", primaryColor: "#DCEBE8", primaryTextColor: "#12211F", lineColor: "#0B5F58" },
       });
       try {
         const clean = code.replace(/^```(?:mermaid)?\s*|```\s*$/g, "").trim();
