@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
-import { Public_Sans } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import { connection } from "next/server";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import FolderTree, { type TreeSemester } from "@/components/FolderTree";
+import ThemeToggle from "@/components/ThemeToggle";
 import "./globals.css";
 
-const sans = Public_Sans({ subsets: ["latin"], variable: "--font-sans" });
+const THEME_SCRIPT = `try{var t=localStorage.getItem("theme");document.documentElement.dataset.theme=t||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch(e){document.documentElement.dataset.theme="light"}`;
+
+const sans = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: { default: "BUC Med — Lectures, Summaries & Exams", template: "%s · BUC Med" },
@@ -35,7 +38,8 @@ async function loadTree(): Promise<TreeSemester[]> {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const tree = await loadTree();
   return (
-    <html lang="en" className={sans.variable}>
+    <html lang="en" className={sans.variable} suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} /></head>
       <body>
         <header className="header">
           <div className="container header-inner">
@@ -46,7 +50,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <span className="brand-sub">Powered by Brandyy</span>
               </div>
             </Link>
-            <span className="header-meta">Auto-synced daily at 8:00 PM</span>
+            <div className="header-actions">
+              <span className="header-meta">Auto-synced daily at 8:00 PM</span>
+              <ThemeToggle />
+            </div>
           </div>
         </header>
         <div className="shell">
