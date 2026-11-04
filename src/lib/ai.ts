@@ -199,8 +199,8 @@ function flatten(t: Tiered) {
     }));
 }
 
-export async function processLesson(lessonId: string) {
-  const text = await extractLessonText(lessonId);
+export async function processLesson(lessonId: string, overrideText?: string) {
+  const text = overrideText || (await extractLessonText(lessonId));
   if (!text) {
     await prisma.lesson.update({ where: { id: lessonId }, data: { status: "EMPTY" } });
     return;
