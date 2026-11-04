@@ -1,3 +1,7 @@
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { execSync } from "child_process";
 import OpenAI from "openai";
 import pdfParse from "pdf-parse-fork";
 import * as op from "officeparser";
@@ -64,6 +68,19 @@ async function extractLessonText(lessonId: string): Promise<string> {
       if (mimeType === "application/pdf") {
         const parsed = await pdfParse(data);
         text = parsed.text;
+        if (!text || text.trim().length < 50) {
+          try {
+            const ocrBin = path.join(process.cwd(), "scripts/ocr");
+            if (fs.existsSync(ocrBin)) {
+              const tmpFile = path.join(os.tmpdir(), `ocr_${f.driveId}.pdf`);
+              fs.writeFileSync(tmpFile, data);
+              text = execSync(`"${ocrBin}" "${tmpFile}"`, { maxBuffer: 50 * 1024 * 1024 }).toString("utf-8");
+              try { fs.unlinkSync(tmpFile); } catch (_e) {}
+            }
+          } catch (ocrErr) {
+            console.error(`OCR fallback failed for ${f.title}:`, ocrErr);
+          }
+        }
       } else if (OFFICE_MIMES[mimeType] || mimeType.includes("presentation") || mimeType.includes("word")) {
         const ext = OFFICE_MIMES[mimeType] || (f.title.endsWith(".pptx") ? "pptx" : f.title.endsWith(".docx") ? "docx" : "pptx");
         const res: any = await (op.convert ? op.convert(data, "text", { parseConfig: { fileType: ext } }) : op.parseOffice(data));
