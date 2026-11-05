@@ -17,6 +17,70 @@ const READABLE = new Set([
   ...Object.keys(OFFICE_MIMES),
 ]);
 
+function isComponentFolder(name: string): boolean {
+  const clean = name.trim().toLowerCase().replace(/^[\d\.\-_\s]+/, "");
+  return /^(lecture|lectures|cbl|cbls|cpl|cbl\s*&\s*short\s*cases?|checklist|checklists|history|skill\s*labs?|evaluation\s*tools?|practical|quizzes|short\s*cases?|osce|writing)$/i.test(
+    clean
+  );
+}
+
+interface DiscoveredLesson {
+  driveId: string;
+  title: string;
+  folderId?: string;
+  directFile?: DriveItem;
+}
+
+/**
+ * Recursively inspect folders under a subject. Container folders whose subfolders
+ * represent distinct topics/lectures are un-bundled into individual lessons.
+ */
+async function discoverLessons(
+  folderId: string,
+  prefix: string,
+  subName: string,
+  depth: number = 0
+): Promise<DiscoveredLesson[]> {
+  const children = await listChildren(folderId);
+  const folders = children.filter(isFolder).sort((a, b) => naturalCompare(a.name, b.name));
+  const files = children.filter((c) => !isFolder(c)).sort((a, b) => naturalCompare(a.name, b.name));
+
+  const results: DiscoveredLesson[] = [];
+
+  for (const f of folders) {
+    const fTitle = prefix ? `${prefix} - ${f.name}` : f.name;
+    const fChildren = await listChildren(f.id);
+    const subFolders = fChildren.filter(isFolder).sort((a, b) => naturalCompare(a.name, b.name));
+    const nonComp = subFolders.filter((sf) => !isComponentFolder(sf.name));
+
+    if (nonComp.length > 0 && !subName.toLowerCase().includes("old") && depth < 2) {
+      const subLessons = await discoverLessons(f.id, fTitle, subName, depth + 1);
+      results.push(...subLessons);
+    } else {
+      results.push({
+        driveId: f.id,
+        title: fTitle,
+        folderId: f.id,
+      });
+    }
+  }
+
+  for (const df of files) {
+    const clean = df.name
+      .replace(/\.(pdf|pptx|ppt|docx|doc|mp4|mov|txt|html|xlsx|xls)$/i, "")
+      .replace(/\.(docx|pdf)$/i, "")
+      .trim();
+    const title = prefix ? `${prefix} - ${clean}` : clean;
+    results.push({
+      driveId: `file_les_${df.id}`,
+      title,
+      directFile: df,
+    });
+  }
+
+  return results;
+}
+
 function classify(name: string, path: string[]): FileKind {
   const s = [...path, name].join("/").toLowerCase();
   if (/\bcpl\b|clinical|practical/.test(s)) return "CPL";
@@ -63,29 +127,52 @@ export async function syncDrive() {
       });
       stats.subjects++;
 
-      const rawChildren = await listChildren(sub.id);
-      const folderLessons = rawChildren.filter(isFolder).sort((a, b) => naturalCompare(a.name, b.name));
-      const directFiles = rawChildren.filter((i) => !isFolder(i)).sort((a, b) => naturalCompare(a.name, b.name));
+      const lessons = await discoverLessons(sub.id, "", sub.name);
 
-      for (const [li, les] of folderLessons.entries()) {
-        seen.les.add(les.id);
-        const files = (await listFilesDeep(les.id)).sort((a, b) => naturalCompare(a.name, b.name));
+      for (const [li, item] of lessons.entries()) {
+        seen.les.add(item.driveId);
+
+        let files: {
+          id: string;
+          name: string;
+          mimeType: string;
+          size?: string | number | null;
+          modifiedTime: string;
+          webViewLink?: string;
+          path: string[];
+        }[] = [];
+
+        if (item.folderId) {
+          files = (await listFilesDeep(item.folderId)).sort((a, b) => naturalCompare(a.name, b.name));
+        } else if (item.directFile) {
+          files = [
+            {
+              id: item.directFile.id,
+              name: item.directFile.name,
+              mimeType: item.directFile.mimeType,
+              size: item.directFile.size,
+              modifiedTime: item.directFile.modifiedTime,
+              webViewLink: item.directFile.webViewLink,
+              path: [],
+            },
+          ];
+        }
 
         const hash = createHash("sha1")
           .update(files.map((f) => `${f.id}:${f.modifiedTime}`).sort().join("|"))
           .digest("hex");
 
-        const existing = await prisma.lesson.findUnique({ where: { driveId: les.id } });
+        const existing = await prisma.lesson.findUnique({ where: { driveId: item.driveId } });
         const changed = !existing || existing.contentHash !== hash;
         const hasReadable = files.some((f) => READABLE.has(f.mimeType));
         if (changed) {
-          console.log(`    >>> [CHANGED] Lesson: "${les.name}" (${sub.name}) -> ${hasReadable ? "PENDING" : "EMPTY"}`);
+          console.log(`    >>> [CHANGED] Lesson: "${item.title}" (${sub.name}) -> ${hasReadable ? "PENDING" : "EMPTY"}`);
         }
 
         const lesson = await prisma.lesson.upsert({
-          where: { driveId: les.id },
+          where: { driveId: item.driveId },
           update: {
-            title: les.name,
+            title: item.title,
             order: li,
             subjectId: subject.id,
             ...(changed && {
@@ -96,8 +183,8 @@ export async function syncDrive() {
             }),
           },
           create: {
-            title: les.name,
-            driveId: les.id,
+            title: item.title,
+            driveId: item.driveId,
             order: li,
             subjectId: subject.id,
             contentHash: hash,
@@ -128,70 +215,6 @@ export async function syncDrive() {
           });
           stats.files++;
         }
-      }
-
-      // Ingest direct files residing in the subject folder
-      for (const [dfi, df] of directFiles.entries()) {
-        const fileLessonDriveId = `file_les_${df.id}`;
-        seen.les.add(fileLessonDriveId);
-        seen.file.add(df.id);
-
-        const cleanTitle = df.name
-          .replace(/\.(pdf|pptx|ppt|docx|doc|mp4|mov|txt|html|xlsx|xls)$/i, "")
-          .replace(/\.(docx|pdf)$/i, "")
-          .trim();
-        const hash = createHash("sha1").update(`${df.id}:${df.modifiedTime}`).digest("hex");
-        const existing = await prisma.lesson.findUnique({ where: { driveId: fileLessonDriveId } });
-        const changed = !existing || existing.contentHash !== hash;
-        const hasReadable = READABLE.has(df.mimeType);
-
-        if (changed) {
-          console.log(`    >>> [CHANGED DIRECT FILE] Lesson: "${cleanTitle}" (${sub.name}) -> ${hasReadable ? "PENDING" : "EMPTY"}`);
-        }
-
-        const lesson = await prisma.lesson.upsert({
-          where: { driveId: fileLessonDriveId },
-          update: {
-            title: cleanTitle,
-            order: folderLessons.length + dfi,
-            subjectId: subject.id,
-            ...(changed && {
-              contentHash: hash,
-              status: hasReadable ? "PENDING" : "EMPTY",
-              attempts: 0,
-              lastError: null,
-            }),
-          },
-          create: {
-            title: cleanTitle,
-            driveId: fileLessonDriveId,
-            order: folderLessons.length + dfi,
-            subjectId: subject.id,
-            contentHash: hash,
-            status: hasReadable ? "PENDING" : "EMPTY",
-          },
-        });
-        stats.lessons++;
-        if (changed) stats.changedLessons++;
-
-        const data = {
-          title: df.name,
-          mimeType: df.mimeType,
-          kind: classify(df.name, []),
-          sizeBytes: df.size !== undefined && df.size !== null ? BigInt(df.size) : null,
-          modifiedTime: new Date(df.modifiedTime),
-          viewUrl: df.webViewLink ?? `https://drive.google.com/file/d/${df.id}/view`,
-          downloadUrl: EXPORTABLE[df.mimeType]
-            ? `/api/files/${df.id}/download`
-            : `https://drive.google.com/uc?export=download&id=${df.id}`,
-          lessonId: lesson.id,
-        };
-        await prisma.lessonFile.upsert({
-          where: { driveId: df.id },
-          update: data,
-          create: { ...data, driveId: df.id },
-        });
-        stats.files++;
       }
     }
   }
