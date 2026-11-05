@@ -101,11 +101,11 @@ export default async function SubjectPage({ params, searchParams }: Props) {
       {hasFolderGroups ? (
         <>
           <p style={{ color: "var(--muted)", fontSize: "1rem", marginTop: "-1rem", marginBottom: "1.5rem" }}>
-            {folderMap.size} distinct folders • {subject.lessons.length} lessons
+            {folderMap.size} folders • {subject.lessons.length} lessons
           </p>
 
           {/* Folder overview cards */}
-          <div className="grid" style={{ marginBottom: "1.5rem" }}>
+          <div className="grid">
             {Array.from(folderMap.entries()).map(([fName, fLessons], i) => {
               const ready = fLessons.filter((l) => l.status === "READY").length;
               const totalFiles = fLessons.reduce((acc, l) => acc + l._count.files, 0);
@@ -130,51 +130,18 @@ export default async function SubjectPage({ params, searchParams }: Props) {
                 </Link>
               );
             })}
+
+            {flatLessons.map((l, i) => (
+              <Link key={l.id} href={`/lesson/${l.id}`} className="card" id={`lesson-${l.id}`} style={{ animationDelay: `${(folderMap.size + i) * 40}ms` }}>
+                <div className="card-icon"><FolderIcon /></div>
+                <h3>{l.title}</h3>
+                <p>{l._count.files} files</p>
+                <div className="card-foot">
+                  <span className={`badge s-${l.status}`}>{STATUS_LABEL[l.status]}</span>
+                </div>
+              </Link>
+            ))}
           </div>
-
-          {/* Grouped contents for each folder */}
-          {Array.from(folderMap.entries()).map(([fName, fLessons]) => (
-            <section key={fName} style={{ marginBottom: "2.5rem" }}>
-              <div className="folder-section-header">
-                <h2><span>📁</span> {fName}</h2>
-                <Link href={`/subject/${subject.id}?folder=${encodeURIComponent(fName)}`}>
-                  Open {fName} ({fLessons.length}) →
-                </Link>
-              </div>
-              <div className="grid">
-                {fLessons.map((l, i) => (
-                  <Link key={l.id} href={`/lesson/${l.id}`} className="card" id={`lesson-${l.id}`} style={{ animationDelay: `${i * 35}ms` }}>
-                    <div className="card-icon"><FolderIcon /></div>
-                    <h3>{l.title.replace(`${fName} - `, "")}</h3>
-                    <p>{l._count.files} files</p>
-                    <div className="card-foot">
-                      <span className={`badge s-${l.status}`}>{STATUS_LABEL[l.status]}</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </section>
-          ))}
-
-          {flatLessons.length > 0 && (
-            <section style={{ marginBottom: "2.5rem" }}>
-              <div className="folder-section-header">
-                <h2><span>📁</span> Other Lessons</h2>
-              </div>
-              <div className="grid">
-                {flatLessons.map((l, i) => (
-                  <Link key={l.id} href={`/lesson/${l.id}`} className="card" id={`lesson-${l.id}`} style={{ animationDelay: `${i * 35}ms` }}>
-                    <div className="card-icon"><FolderIcon /></div>
-                    <h3>{l.title}</h3>
-                    <p>{l._count.files} files</p>
-                    <div className="card-foot">
-                      <span className={`badge s-${l.status}`}>{STATUS_LABEL[l.status]}</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </section>
-          )}
         </>
       ) : (
         <div className="grid">

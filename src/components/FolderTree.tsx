@@ -65,12 +65,70 @@ export default function FolderTree({ tree }: { tree: TreeSemester[] }) {
                         <Link href={`/subject/${x.id}`} className="tree-row depth-1" aria-current={x.id === currentId ? "page" : undefined}>
                           {x.title}
                         </Link>
-                        {subOpen &&
-                          x.lessons.map((l) => (
+                        {subOpen && (() => {
+                          // Check if lessons have folder prefix
+                          const folderGroups = new Map<string, typeof x.lessons>();
+                          const flat: typeof x.lessons = [];
+
+                          for (const l of x.lessons) {
+                            if (l.title.includes(" - ")) {
+                              const [fName] = l.title.split(" - ");
+                              const list = folderGroups.get(fName) || [];
+                              list.push(l);
+                              folderGroups.set(fName, list);
+                            } else {
+                              flat.push(l);
+                            }
+                          }
+
+                          if (folderGroups.size > 1) {
+                            return (
+                              <>
+                                {Array.from(folderGroups.entries()).map(([fName, fLessons]) => {
+                                  const folderHasActiveLesson = fLessons.some((l) => l.id === currentId);
+                                  return (
+                                    <div key={fName}>
+                                      <Link
+                                        href={`/subject/${x.id}?folder=${encodeURIComponent(fName)}`}
+                                        className="tree-row depth-2"
+                                        style={{ fontWeight: 600, color: "var(--fg)" }}
+                                      >
+                                        <FolderIcon size={14} /> {fName}
+                                      </Link>
+                                      {folderHasActiveLesson &&
+                                        fLessons.map((l) => (
+                                          <Link
+                                            key={l.id}
+                                            href={`/lesson/${l.id}`}
+                                            className="tree-row depth-3"
+                                            aria-current={l.id === currentId ? "page" : undefined}
+                                          >
+                                            {l.title.replace(`${fName} - `, "")}
+                                          </Link>
+                                        ))}
+                                    </div>
+                                  );
+                                })}
+                                {flat.map((l) => (
+                                  <Link
+                                    key={l.id}
+                                    href={`/lesson/${l.id}`}
+                                    className="tree-row depth-2"
+                                    aria-current={l.id === currentId ? "page" : undefined}
+                                  >
+                                    {l.title}
+                                  </Link>
+                                ))}
+                              </>
+                            );
+                          }
+
+                          return x.lessons.map((l) => (
                             <Link key={l.id} href={`/lesson/${l.id}`} className="tree-row depth-2" aria-current={l.id === currentId ? "page" : undefined}>
                               {l.title}
                             </Link>
-                          ))}
+                          ));
+                        })()}
                       </div>
                     );
                   })}

@@ -298,6 +298,8 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .tree-row[aria-current="page"] { background: #fff; color: var(--accent); font-weight: 600; }
 .tree-row.depth-1 { padding-left: 36px; }
 .tree-row.depth-2 { padding-left: 52px; font-size: .88rem; }
+.tree-row.depth-3 { padding-left: 68px; font-size: .84rem; color: var(--muted); }
+.tree-row.depth-3:hover { color: var(--fg); }
 .tree-match { flex-direction: column; align-items: flex-start; gap: 0; }
 .tree-match span { font-size: .78rem; color: var(--muted); }
 .tree-empty { padding: 16px 12px; color: var(--muted); }
