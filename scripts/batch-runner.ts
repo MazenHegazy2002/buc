@@ -2,8 +2,10 @@ import "dotenv/config";
 import { processLesson } from "../src/lib/ai";
 import { prisma } from "../src/lib/prisma";
 
+const CONCURRENCY = 6;
+
 async function main() {
-  console.log("=== BATCH RUNNER STARTED ===");
+  console.log(`=== CONCURRENT BATCH RUNNER STARTED (Concurrency: ${CONCURRENCY}) ===`);
   const startTotal = Date.now();
   let completed = 0;
   let failed = 0;
@@ -14,78 +16,82 @@ async function main() {
     data: { status: "PENDING", attempts: 0, lastError: null },
   });
 
-  while (true) {
-    const [pendingCount, failedCount, readyCount, emptyCount] = await Promise.all([
-      prisma.lesson.count({ where: { status: "PENDING" } }),
-      prisma.lesson.count({ where: { status: "FAILED" } }),
-      prisma.lesson.count({ where: { status: "READY" } }),
-      prisma.lesson.count({ where: { status: "EMPTY" } }),
-    ]);
+  async function runWorker(workerId: number) {
+    while (true) {
+      // Atomically find and claim the next pending lesson using Postgres SKIP LOCKED
+      const claimed = await prisma.$queryRaw<Array<{ id: string }>>`
+        UPDATE "Lesson"
+        SET "status" = 'PROCESSING'::"ProcessStatus", "attempts" = "attempts" + 1
+        WHERE "id" = (
+          SELECT "id" FROM "Lesson"
+          WHERE "status" = 'PENDING'::"ProcessStatus"
+          ORDER BY "order" ASC
+          FOR UPDATE SKIP LOCKED
+          LIMIT 1
+        )
+        RETURNING "id"
+      `;
 
-    console.log(
-      `\n[STATUS] Ready: ${readyCount} | Pending: ${pendingCount} | Failed: ${failedCount} | Empty: ${emptyCount}`
-    );
-
-    if (pendingCount === 0) {
-      if (failedCount > 0) {
-        console.log(`Checking ${failedCount} failed lessons to see if any have attempts < 3...`);
-        const retryable = await prisma.lesson.findMany({
-          where: { status: "FAILED", attempts: { lt: 3 } },
-        });
-        if (retryable.length > 0) {
-          console.log(`Resetting ${retryable.length} retryable failed lessons to PENDING...`);
-          await prisma.lesson.updateMany({
-            where: { id: { in: retryable.map((r) => r.id) } },
-            data: { status: "PENDING" },
-          });
-          continue;
-        }
+      if (!claimed || claimed.length === 0) {
+        break;
       }
-      console.log("No more PENDING lessons remaining. All done!");
-      break;
-    }
 
-    // Pick the next pending lesson
-    const nextLesson = await prisma.lesson.findFirst({
-      where: { status: "PENDING" },
-      orderBy: { order: "asc" },
-      include: { subject: true, files: true },
-    });
-
-    if (!nextLesson) {
-      console.log("No pending lesson returned by query. Exiting loop.");
-      break;
-    }
-
-    console.log(
-      `\n>>> [STARTING] Lesson: "${nextLesson.title}" (${nextLesson.subject.title}) - Files: ${nextLesson.files.length}`
-    );
-
-    // Atomically claim it
-    await prisma.lesson.update({
-      where: { id: nextLesson.id },
-      data: { status: "PROCESSING", attempts: { increment: 1 } },
-    });
-
-    const lessonStart = Date.now();
-    try {
-      await processLesson(nextLesson.id);
-      completed++;
-      const duration = ((Date.now() - lessonStart) / 1000).toFixed(1);
-      console.log(`>>> [SUCCESS] Lesson "${nextLesson.title}" completed in ${duration}s. (Total completed: ${completed})`);
-    } catch (err: unknown) {
-      failed++;
-      const duration = ((Date.now() - lessonStart) / 1000).toFixed(1);
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`>>> [FAILED] Lesson "${nextLesson.title}" failed after ${duration}s: ${msg}`);
-      await prisma.lesson.update({
-        where: { id: nextLesson.id },
-        data: {
-          status: "FAILED",
-          lastError: msg.slice(0, 1000),
-        },
+      const nextLesson = await prisma.lesson.findUnique({
+        where: { id: claimed[0].id },
+        include: { subject: true, files: true },
       });
+
+      if (!nextLesson) {
+        break;
+      }
+
+      console.log(
+        `\n[Worker ${workerId}] >>> STARTING: "${nextLesson.title}" (${nextLesson.subject.title}) - Files: ${nextLesson.files.length}`
+      );
+
+      const lessonStart = Date.now();
+      try {
+        await processLesson(nextLesson.id);
+        completed++;
+        const duration = ((Date.now() - lessonStart) / 1000).toFixed(1);
+        console.log(
+          `[Worker ${workerId}] >>> SUCCESS: "${nextLesson.title}" completed in ${duration}s. (Total completed: ${completed})`
+        );
+      } catch (err: unknown) {
+        failed++;
+        const duration = ((Date.now() - lessonStart) / 1000).toFixed(1);
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[Worker ${workerId}] >>> FAILED: "${nextLesson.title}" after ${duration}s: ${msg}`
+        );
+        await prisma.lesson.update({
+          where: { id: nextLesson.id },
+          data: {
+            status: "FAILED",
+            lastError: msg.slice(0, 1000),
+          },
+        });
+      }
     }
+  }
+
+  while (true) {
+    // Run the concurrent worker pool
+    await Promise.all(Array.from({ length: CONCURRENCY }, (_, i) => runWorker(i + 1)));
+
+    // Check for any retryable failures
+    const retryable = await prisma.lesson.findMany({
+      where: { status: "FAILED", attempts: { lt: 3 } },
+    });
+    if (retryable.length > 0) {
+      console.log(`\nRetrying ${retryable.length} failed lessons with attempts < 3...`);
+      await prisma.lesson.updateMany({
+        where: { id: { in: retryable.map((r) => r.id) } },
+        data: { status: "PENDING" },
+      });
+      continue;
+    }
+    break;
   }
 
   const [finalReady, finalMcqs, finalCases] = await Promise.all([

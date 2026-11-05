@@ -63,8 +63,11 @@ export async function syncDrive() {
       });
       stats.subjects++;
 
-      const lessons = sorted(await listChildren(sub.id));
-      for (const [li, les] of lessons.entries()) {
+      const rawChildren = await listChildren(sub.id);
+      const folderLessons = rawChildren.filter(isFolder).sort((a, b) => naturalCompare(a.name, b.name));
+      const directFiles = rawChildren.filter((i) => !isFolder(i)).sort((a, b) => naturalCompare(a.name, b.name));
+
+      for (const [li, les] of folderLessons.entries()) {
         seen.les.add(les.id);
         const files = (await listFilesDeep(les.id)).sort((a, b) => naturalCompare(a.name, b.name));
 
@@ -125,6 +128,70 @@ export async function syncDrive() {
           });
           stats.files++;
         }
+      }
+
+      // Ingest direct files residing in the subject folder
+      for (const [dfi, df] of directFiles.entries()) {
+        const fileLessonDriveId = `file_les_${df.id}`;
+        seen.les.add(fileLessonDriveId);
+        seen.file.add(df.id);
+
+        const cleanTitle = df.name
+          .replace(/\.(pdf|pptx|ppt|docx|doc|mp4|mov|txt|html|xlsx|xls)$/i, "")
+          .replace(/\.(docx|pdf)$/i, "")
+          .trim();
+        const hash = createHash("sha1").update(`${df.id}:${df.modifiedTime}`).digest("hex");
+        const existing = await prisma.lesson.findUnique({ where: { driveId: fileLessonDriveId } });
+        const changed = !existing || existing.contentHash !== hash;
+        const hasReadable = READABLE.has(df.mimeType);
+
+        if (changed) {
+          console.log(`    >>> [CHANGED DIRECT FILE] Lesson: "${cleanTitle}" (${sub.name}) -> ${hasReadable ? "PENDING" : "EMPTY"}`);
+        }
+
+        const lesson = await prisma.lesson.upsert({
+          where: { driveId: fileLessonDriveId },
+          update: {
+            title: cleanTitle,
+            order: folderLessons.length + dfi,
+            subjectId: subject.id,
+            ...(changed && {
+              contentHash: hash,
+              status: hasReadable ? "PENDING" : "EMPTY",
+              attempts: 0,
+              lastError: null,
+            }),
+          },
+          create: {
+            title: cleanTitle,
+            driveId: fileLessonDriveId,
+            order: folderLessons.length + dfi,
+            subjectId: subject.id,
+            contentHash: hash,
+            status: hasReadable ? "PENDING" : "EMPTY",
+          },
+        });
+        stats.lessons++;
+        if (changed) stats.changedLessons++;
+
+        const data = {
+          title: df.name,
+          mimeType: df.mimeType,
+          kind: classify(df.name, []),
+          sizeBytes: df.size !== undefined && df.size !== null ? BigInt(df.size) : null,
+          modifiedTime: new Date(df.modifiedTime),
+          viewUrl: df.webViewLink ?? `https://drive.google.com/file/d/${df.id}/view`,
+          downloadUrl: EXPORTABLE[df.mimeType]
+            ? `/api/files/${df.id}/download`
+            : `https://drive.google.com/uc?export=download&id=${df.id}`,
+          lessonId: lesson.id,
+        };
+        await prisma.lessonFile.upsert({
+          where: { driveId: df.id },
+          update: data,
+          create: { ...data, driveId: df.id },
+        });
+        stats.files++;
       }
     }
   }

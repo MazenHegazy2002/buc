@@ -152,6 +152,7 @@ async function callAI<T>(prompt: string, text: string): Promise<T> {
     ],
     response_format: { type: "json_object" },
     temperature: 0.3,
+    max_tokens: 12288,
   });
 
   const content = res.choices[0]?.message?.content || "{}";
@@ -192,10 +193,13 @@ function flatten(t: Tiered) {
   return [...easy, ...medium, ...hard]
     .filter(valid)
     .map((q, order) => ({
-      ...q,
-      question: q.question.trim(),
-      explanation: typeof q.explanation === "string" ? q.explanation : "",
       order,
+      question: q.question.trim(),
+      options: q.options.map((opt) => String(opt).trim()),
+      correctIndex: q.correctIndex,
+      explanation: typeof q.explanation === "string" ? q.explanation : "",
+      difficulty: q.difficulty,
+      scenario: typeof q.scenario === "string" ? q.scenario : "",
     }));
 }
 
@@ -228,10 +232,25 @@ export async function processLesson(lessonId: string, overrideText?: string) {
         lastError: null,
         generatedAt: new Date(),
         mcqs: {
-          create: mcqRows.map(({ scenario: _s, ...q }) => q),
+          create: mcqRows.map((q) => ({
+            order: q.order,
+            question: q.question,
+            options: q.options,
+            correctIndex: q.correctIndex,
+            explanation: q.explanation,
+            difficulty: q.difficulty,
+          })),
         },
         cases: {
-          create: caseRows.map((q) => ({ ...q, scenario: q.scenario ?? "" })),
+          create: caseRows.map((q) => ({
+            order: q.order,
+            scenario: q.scenario,
+            question: q.question,
+            options: q.options,
+            correctIndex: q.correctIndex,
+            explanation: q.explanation,
+            difficulty: q.difficulty,
+          })),
         },
       },
     }),
