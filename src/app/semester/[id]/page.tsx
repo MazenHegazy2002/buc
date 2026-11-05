@@ -20,7 +20,7 @@ export default async function SemesterPage({ params }: Props) {
     include: {
       subjects: {
         orderBy: { order: "asc" },
-        include: { lessons: { select: { status: true } } },
+        include: { lessons: { select: { status: true, title: true } } },
       },
     },
   });
@@ -33,16 +33,25 @@ export default async function SemesterPage({ params }: Props) {
       <div className="grid">
         {semester.subjects.map((sub, i) => {
           const ready = sub.lessons.filter((l) => l.status === "READY").length;
+          const folderNames = new Set(
+            sub.lessons
+              .map((l) => (l.title.includes(" - ") ? l.title.split(" - ")[0] : null))
+              .filter(Boolean)
+          );
+          const folderCount = folderNames.size;
           return (
             <Link key={sub.id} href={`/subject/${sub.id}`} className="card" id={`subject-${sub.id}`} style={{ animationDelay: `${i * 50}ms` }}>
               <div className="card-icon"><FolderIcon /></div>
               <h3>{sub.title}</h3>
-              <p>{sub.lessons.length} lessons</p>
+              <p>
+                {folderCount > 1 ? `${folderCount} folders · ` : ""}
+                {sub.lessons.length} lessons
+              </p>
               <div className="card-foot">
                 <span className={`badge ${ready === sub.lessons.length && ready > 0 ? "s-READY" : "s-PENDING"}`}>
                   {ready}/{sub.lessons.length} ready
                 </span>
-                
+                <span className="arrow">→</span>
               </div>
             </Link>
           );

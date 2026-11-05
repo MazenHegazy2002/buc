@@ -9,9 +9,14 @@ type Props = { params: Promise<{ id: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const l = await prisma.lesson.findUnique({ where: { id: (await params).id }, include: { subject: true } });
+  if (!l) return { title: "Lesson", description: "Lesson materials" };
+  const hasFolder = l.title.includes(" - ");
+  const [folderName, ...topicParts] = hasFolder ? l.title.split(" - ") : ["", l.title];
+  const cleanTitle = hasFolder ? topicParts.join(" - ") : l.title;
+  const title = hasFolder ? `${cleanTitle} (${folderName}) — ${l.subject.title}` : `${cleanTitle} — ${l.subject.title}`;
   return {
-    title: l ? `${l.title} — ${l.subject.title}` : "Lesson",
-    description: `Lecture PDFs, summary, mind map, video, 30 MCQs and 30 clinical cases for ${l?.title}.`,
+    title,
+    description: `Lecture PDFs, summary, mind map, video, 30 MCQs and 30 clinical cases for ${cleanTitle}.`,
   };
 }
 
@@ -30,13 +35,31 @@ export default async function LessonPage({ params }: Props) {
   if (!lesson) notFound();
 
   const { subject } = lesson;
+  const hasFolder = lesson.title.includes(" - ");
+  const [folderName, ...topicParts] = hasFolder ? lesson.title.split(" - ") : ["", lesson.title];
+  const cleanTitle = hasFolder ? topicParts.join(" - ") : lesson.title;
+
   return (
     <>
       <nav className="crumbs">
         <Link href="/">Library</Link> / <Link href={`/semester/${subject.semester.id}`}>{subject.semester.title}</Link> /{" "}
-        <Link href={`/subject/${subject.id}`}>{subject.title}</Link> / <span>{lesson.title}</span>
+        <Link href={`/subject/${subject.id}`}>{subject.title}</Link> /{" "}
+        {hasFolder && (
+          <>
+            <Link href={`/subject/${subject.id}?folder=${encodeURIComponent(folderName)}`}>{folderName}</Link> /{" "}
+          </>
+        )}
+        <span>{cleanTitle}</span>
       </nav>
-      <h1 className="page-title">{lesson.title}</h1>
+      <h1 className="page-title" style={{ marginBottom: hasFolder ? ".35rem" : "1.5rem" }}>{cleanTitle}</h1>
+      {hasFolder && (
+        <div style={{ display: "flex", gap: ".6rem", alignItems: "center", marginBottom: "1.5rem" }}>
+          <Link href={`/subject/${subject.id}?folder=${encodeURIComponent(folderName)}`} className="badge" style={{ color: "var(--accent)", textDecoration: "none" }}>
+            📁 {folderName}
+          </Link>
+          <span style={{ color: "var(--muted)", fontSize: ".85rem" }}>{subject.title}</span>
+        </div>
+      )}
       <LessonTabs
         status={lesson.status}
         lastError={lesson.lastError}

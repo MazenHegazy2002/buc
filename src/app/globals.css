@@ -110,6 +110,41 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .arrow { color: var(--accent); transition: transform .25s; }
 .card:hover .arrow { transform: translateX(4px); }
 
+/* ---------- Folder cards and headers ---------- */
+.folder-card {
+  border-color: hsl(172 72% 48% / .3);
+  background: linear-gradient(135deg, var(--panel), hsl(172 72% 48% / .06));
+}
+.folder-card:hover {
+  border-color: hsl(172 72% 48% / .6);
+  box-shadow: 0 18px 50px -14px hsl(172 72% 40% / .35);
+}
+.folder-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 2.2rem 0 1rem;
+  padding-bottom: .6rem;
+  border-bottom: 1px solid var(--border);
+}
+.folder-section-header h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  letter-spacing: -.01em;
+}
+.folder-section-header a {
+  color: var(--accent);
+  font-size: .88rem;
+  font-weight: 600;
+  transition: opacity .2s;
+}
+.folder-section-header a:hover {
+  opacity: .8;
+}
+
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
 /* ---------- Badges ---------- */
