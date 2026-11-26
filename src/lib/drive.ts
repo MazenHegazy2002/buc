@@ -100,9 +100,14 @@ export async function listFilesDeep(
 ): Promise<(DriveItem & { path: string[] })[]> {
   const items = await listChildren(folderId);
   const files: (DriveItem & { path: string[] })[] = [];
+  const folderPromises: Promise<(DriveItem & { path: string[] })[]>[] = [];
   for (const it of items) {
-    if (isFolder(it)) files.push(...(await listFilesDeep(it.id, [...path, it.name])));
+    if (isFolder(it)) folderPromises.push(listFilesDeep(it.id, [...path, it.name]));
     else files.push({ ...it, path });
+  }
+  if (folderPromises.length > 0) {
+    const subResults = await Promise.all(folderPromises);
+    for (const res of subResults) files.push(...res);
   }
   return files;
 }

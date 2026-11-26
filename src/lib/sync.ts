@@ -5,6 +5,7 @@ import type { FileKind } from "@prisma/client";
 
 export const OFFICE_MIMES: Record<string, string> = {
   "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  "application/vnd.openxmlformats-officedocument.presentationml.slideshow": "pptx",
   "application/vnd.ms-powerpoint": "ppt",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
   "application/msword": "doc",
@@ -47,23 +48,27 @@ async function discoverLessons(
 
   const results: DiscoveredLesson[] = [];
 
-  for (const f of folders) {
-    const fTitle = prefix ? `${prefix} - ${f.name}` : f.name;
-    const fChildren = await listChildren(f.id);
-    const subFolders = fChildren.filter(isFolder).sort((a, b) => naturalCompare(a.name, b.name));
-    const nonComp = subFolders.filter((sf) => !isComponentFolder(sf.name));
+  const folderResults = await Promise.all(
+    folders.map(async (f) => {
+      const fTitle = prefix ? `${prefix} - ${f.name}` : f.name;
+      const fChildren = await listChildren(f.id);
+      const subFolders = fChildren.filter(isFolder).sort((a, b) => naturalCompare(a.name, b.name));
+      const nonComp = subFolders.filter((sf) => !isComponentFolder(sf.name));
 
-    if (nonComp.length > 0 && !subName.toLowerCase().includes("old") && depth < 2) {
-      const subLessons = await discoverLessons(f.id, fTitle, subName, depth + 1);
-      results.push(...subLessons);
-    } else {
-      results.push({
-        driveId: f.id,
-        title: fTitle,
-        folderId: f.id,
-      });
-    }
-  }
+      if (nonComp.length > 0 && !subName.toLowerCase().includes("old") && depth < 2) {
+        return discoverLessons(f.id, fTitle, subName, depth + 1);
+      } else {
+        return [
+          {
+            driveId: f.id,
+            title: fTitle,
+            folderId: f.id,
+          },
+        ];
+      }
+    })
+  );
+  for (const fr of folderResults) results.push(...fr);
 
   for (const df of files) {
     const clean = df.name
@@ -129,34 +134,39 @@ export async function syncDrive() {
 
       const lessons = await discoverLessons(sub.id, "", sub.name);
 
-      for (const [li, item] of lessons.entries()) {
+      const lessonData = await Promise.all(
+        lessons.map(async (item) => {
+          let files: {
+            id: string;
+            name: string;
+            mimeType: string;
+            size?: string | number | null;
+            modifiedTime: string;
+            webViewLink?: string;
+            path: string[];
+          }[] = [];
+
+          if (item.folderId) {
+            files = (await listFilesDeep(item.folderId)).sort((a, b) => naturalCompare(a.name, b.name));
+          } else if (item.directFile) {
+            files = [
+              {
+                id: item.directFile.id,
+                name: item.directFile.name,
+                mimeType: item.directFile.mimeType,
+                size: item.directFile.size,
+                modifiedTime: item.directFile.modifiedTime,
+                webViewLink: item.directFile.webViewLink,
+                path: [],
+              },
+            ];
+          }
+          return { item, files };
+        })
+      );
+
+      for (const [li, { item, files }] of lessonData.entries()) {
         seen.les.add(item.driveId);
-
-        let files: {
-          id: string;
-          name: string;
-          mimeType: string;
-          size?: string | number | null;
-          modifiedTime: string;
-          webViewLink?: string;
-          path: string[];
-        }[] = [];
-
-        if (item.folderId) {
-          files = (await listFilesDeep(item.folderId)).sort((a, b) => naturalCompare(a.name, b.name));
-        } else if (item.directFile) {
-          files = [
-            {
-              id: item.directFile.id,
-              name: item.directFile.name,
-              mimeType: item.directFile.mimeType,
-              size: item.directFile.size,
-              modifiedTime: item.directFile.modifiedTime,
-              webViewLink: item.directFile.webViewLink,
-              path: [],
-            },
-          ];
-        }
 
         const hash = createHash("sha1")
           .update(files.map((f) => `${f.id}:${f.modifiedTime}`).sort().join("|"))
